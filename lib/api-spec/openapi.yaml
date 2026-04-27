@@ -3,13 +3,25 @@ info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Bulk Messenger API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: contacts
+    description: Recipient contacts uploaded from Excel
+  - name: templates
+    description: Email and WhatsApp templates
+  - name: email
+    description: Email account configuration and sending
+  - name: whatsapp
+    description: WhatsApp QR-based connection and sending
+  - name: campaigns
+    description: Bulk send campaigns and delivery tracking
+  - name: stats
+    description: Dashboard summaries
 paths:
   /healthz:
     get:
@@ -24,13 +36,581 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /contacts:
+    get:
+      operationId: listContacts
+      tags: [contacts]
+      summary: List all contacts
+      responses:
+        "200":
+          description: List of contacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Contact"
+    delete:
+      operationId: deleteAllContacts
+      tags: [contacts]
+      summary: Delete all contacts
+      responses:
+        "204":
+          description: Deleted
+
+  /contacts/upload:
+    post:
+      operationId: uploadContacts
+      tags: [contacts]
+      summary: Upload an Excel file of contacts
+      description: Upload an .xlsx or .csv file (multipart form-data, field name "file") containing recipient details. Auto-detects name, email and phone columns.
+      responses:
+        "200":
+          description: Upload result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadContactsResult"
+        "400":
+          description: Invalid file
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /contacts/{id}:
+    delete:
+      operationId: deleteContact
+      tags: [contacts]
+      summary: Delete a single contact
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /templates:
+    get:
+      operationId: listTemplates
+      tags: [templates]
+      summary: List templates
+      responses:
+        "200":
+          description: List of templates
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Template"
+    post:
+      operationId: createTemplate
+      tags: [templates]
+      summary: Create a template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Template"
+
+  /templates/{id}:
+    patch:
+      operationId: updateTemplate
+      tags: [templates]
+      summary: Update a template
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TemplateInput"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Template"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteTemplate
+      tags: [templates]
+      summary: Delete a template
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /email/config:
+    get:
+      operationId: getEmailConfig
+      tags: [email]
+      summary: Get current email (SMTP) configuration
+      responses:
+        "200":
+          description: Email configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailConfig"
+    put:
+      operationId: saveEmailConfig
+      tags: [email]
+      summary: Save SMTP configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmailConfigInput"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmailConfig"
+        "400":
+          description: Invalid config
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /email/test:
+    post:
+      operationId: testEmailConfig
+      tags: [email]
+      summary: Verify SMTP connection
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConnectionTestResult"
+
+  /whatsapp/status:
+    get:
+      operationId: getWhatsappStatus
+      tags: [whatsapp]
+      summary: Get current WhatsApp session status
+      description: Returns the current connection state, including a QR code (data URL) when scanning is required.
+      responses:
+        "200":
+          description: WhatsApp status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappStatus"
+
+  /whatsapp/connect:
+    post:
+      operationId: connectWhatsapp
+      tags: [whatsapp]
+      summary: Start a new WhatsApp session
+      description: Initiates a new WhatsApp Web session. Poll /whatsapp/status to retrieve the QR code and connection state.
+      responses:
+        "200":
+          description: Session initiated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappStatus"
+
+  /whatsapp/logout:
+    post:
+      operationId: logoutWhatsapp
+      tags: [whatsapp]
+      summary: Logout the current WhatsApp session
+      responses:
+        "200":
+          description: Logged out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WhatsappStatus"
+
+  /campaigns:
+    get:
+      operationId: listCampaigns
+      tags: [campaigns]
+      summary: List all campaigns
+      responses:
+        "200":
+          description: List of campaigns
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Campaign"
+    post:
+      operationId: createCampaign
+      tags: [campaigns]
+      summary: Create and start a bulk send campaign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CampaignInput"
+      responses:
+        "201":
+          description: Campaign created and queued
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "400":
+          description: Invalid campaign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /campaigns/{id}:
+    get:
+      operationId: getCampaign
+      tags: [campaigns]
+      summary: Get a single campaign with delivery counts
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Campaign
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Campaign"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /campaigns/{id}/messages:
+    get:
+      operationId: listCampaignMessages
+      tags: [campaigns]
+      summary: List per-recipient delivery rows for a campaign
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of message deliveries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CampaignMessage"
+
+  /stats/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [stats]
+      summary: Dashboard summary
+      description: Top-level counts and recent activity for the dashboard.
+      responses:
+        "200":
+          description: Summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+
+    Contact:
+      type: object
+      required: [id, name, email, phone, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: ["string", "null"]
+        phone:
+          type: ["string", "null"]
+        extraJson:
+          type: ["string", "null"]
+          description: Raw JSON of any other columns from the upload (for personalization).
+        createdAt:
+          type: string
+          format: date-time
+
+    UploadContactsResult:
+      type: object
+      required: [inserted, skipped, total, columns]
+      properties:
+        inserted:
+          type: integer
+        skipped:
+          type: integer
+        total:
+          type: integer
+        columns:
+          type: array
+          items:
+            type: string
+          description: Detected column headers from the file.
+
+    Template:
+      type: object
+      required: [id, name, channel, body, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        channel:
+          type: string
+          enum: [email, whatsapp]
+        subject:
+          type: ["string", "null"]
+          description: Email subject (ignored for whatsapp).
+        body:
+          type: string
+          description: Template body. Use {{name}}, {{email}}, {{phone}} as placeholders.
+        createdAt:
+          type: string
+          format: date-time
+
+    TemplateInput:
+      type: object
+      required: [name, channel, body]
+      properties:
+        name:
+          type: string
+        channel:
+          type: string
+          enum: [email, whatsapp]
+        subject:
+          type: ["string", "null"]
+        body:
+          type: string
+
+    EmailConfig:
+      type: object
+      required: [configured]
+      properties:
+        configured:
+          type: boolean
+        host:
+          type: ["string", "null"]
+        port:
+          type: ["integer", "null"]
+        secure:
+          type: ["boolean", "null"]
+        username:
+          type: ["string", "null"]
+        fromEmail:
+          type: ["string", "null"]
+        fromName:
+          type: ["string", "null"]
+
+    EmailConfigInput:
+      type: object
+      required: [host, port, secure, username, password, fromEmail, fromName]
+      properties:
+        host:
+          type: string
+        port:
+          type: integer
+        secure:
+          type: boolean
+        username:
+          type: string
+        password:
+          type: string
+        fromEmail:
+          type: string
+        fromName:
+          type: string
+
+    ConnectionTestResult:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean
+        message:
+          type: ["string", "null"]
+
+    WhatsappStatus:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [disconnected, connecting, qr, connected, error]
+        qrDataUrl:
+          type: ["string", "null"]
+          description: A data URL containing the QR code image to scan, present only when state is "qr".
+        phoneNumber:
+          type: ["string", "null"]
+        message:
+          type: ["string", "null"]
+        connectedAt:
+          type: ["string", "null"]
+          format: date-time
+
+    Campaign:
+      type: object
+      required: [id, name, channel, templateId, status, totalRecipients, sentCount, failedCount, createdAt]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        channel:
+          type: string
+          enum: [email, whatsapp]
+        templateId:
+          type: integer
+        status:
+          type: string
+          enum: [queued, running, completed, failed]
+        totalRecipients:
+          type: integer
+        sentCount:
+          type: integer
+        failedCount:
+          type: integer
+        rateLimitMs:
+          type: integer
+        startedAt:
+          type: ["string", "null"]
+          format: date-time
+        completedAt:
+          type: ["string", "null"]
+          format: date-time
+        createdAt:
+          type: string
+          format: date-time
+
+    CampaignInput:
+      type: object
+      required: [name, channel, templateId]
+      properties:
+        name:
+          type: string
+        channel:
+          type: string
+          enum: [email, whatsapp]
+        templateId:
+          type: integer
+        contactIds:
+          type: ["array", "null"]
+          items:
+            type: integer
+          description: Optional subset of contact IDs. If omitted, all contacts are used.
+        rateLimitMs:
+          type: ["integer", "null"]
+          description: Delay between sends in milliseconds (default 1500 for email, 4000 for whatsapp).
+
+    CampaignMessage:
+      type: object
+      required: [id, campaignId, contactId, status, attempts]
+      properties:
+        id:
+          type: integer
+        campaignId:
+          type: integer
+        contactId:
+          type: integer
+        recipientName:
+          type: ["string", "null"]
+        recipientAddress:
+          type: ["string", "null"]
+        status:
+          type: string
+          enum: [pending, sent, failed]
+        attempts:
+          type: integer
+        error:
+          type: ["string", "null"]
+        sentAt:
+          type: ["string", "null"]
+          format: date-time
+
+    DashboardSummary:
+      type: object
+      required: [totalContacts, totalCampaigns, totalSent, totalFailed, emailConfigured, whatsappConnected, recentCampaigns]
+      properties:
+        totalContacts:
+          type: integer
+        totalCampaigns:
+          type: integer
+        totalSent:
+          type: integer
+        totalFailed:
+          type: integer
+        emailConfigured:
+          type: boolean
+        whatsappConnected:
+          type: boolean
+        recentCampaigns:
+          type: array
+          items:
+            $ref: "#/components/schemas/Campaign"
