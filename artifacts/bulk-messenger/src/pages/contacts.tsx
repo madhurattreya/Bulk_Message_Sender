@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { useListContacts, useUploadContacts, useDeleteContact, useDeleteAllContacts, getListContactsQueryKey } from "@workspace/api-client-react";
+import { useListContacts, useDeleteContact, useDeleteAllContacts, getListContactsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -11,7 +11,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export function Contacts() {
   const { data: contacts, isLoading } = useListContacts();
-  const uploadContacts = useUploadContacts();
+  const [isUploading, setIsUploading] = useState(false);
   const deleteContact = useDeleteContact();
   const deleteAllContacts = useDeleteAllContacts();
   const queryClient = useQueryClient();
@@ -25,22 +25,39 @@ export function Contacts() {
     const formData = new FormData();
     formData.append("file", file);
 
+    setIsUploading(true);
     try {
-      // @ts-expect-error FormData bypasses generated types cleanly via customFetch
-      await uploadContacts.mutateAsync({ data: formData });
+      const response = await fetch(`${import.meta.env.BASE_URL}api/contacts/upload`, {
+        method: "POST",
+        body: formData,
+      });
+      if (!response.ok) {
+        const text = await response.text();
+        let message = "There was an error uploading your contacts.";
+        try {
+          const parsed = JSON.parse(text) as { error?: string };
+          if (parsed.error) message = parsed.error;
+        } catch {
+          if (text) message = text;
+        }
+        throw new Error(message);
+      }
+      const result = (await response.json()) as { inserted: number; skipped: number; total: number };
       queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
       toast({
         title: "Contacts uploaded",
-        description: "Your contacts have been successfully imported.",
+        description: `Imported ${result.inserted} of ${result.total} rows${result.skipped ? ` (${result.skipped} skipped)` : ""}.`,
       });
     } catch (error) {
       toast({
         variant: "destructive",
         title: "Upload failed",
-        description: "There was an error uploading your contacts.",
+        description: error instanceof Error ? error.message : "There was an error uploading your contacts.",
       });
+    } finally {
+      setIsUploading(false);
     }
-    
+
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -81,9 +98,9 @@ export function Contacts() {
               Delete All
             </Button>
           )}
-          <Button onClick={() => fileInputRef.current?.click()} disabled={uploadContacts.isPending}>
+          <Button onClick={() => fileInputRef.current?.click()} disabled={isUploading}>
             <Upload className="w-4 h-4 mr-2" />
-            {uploadContacts.isPending ? "Uploading..." : "Upload CSV/Excel"}
+            {isUploading ? "Uploading..." : "Upload CSV/Excel"}
           </Button>
           <input
             type="file"
