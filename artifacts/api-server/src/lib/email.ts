@@ -29,16 +29,21 @@ export function clearEmailCache(): void {
 }
 
 function buildTransporter(creds: SmtpCredentials): Transporter {
+  // Defensive trim: Zoho/Gmail App Passwords are displayed with spaces in the
+  // UI (e.g. "abcd efgh ijkl mnop"). Pasting those spaces causes EAUTH 535.
+  const user = creds.username.trim();
+  const pass = creds.password.replace(/\s+/g, "");
+  const host = creds.host.trim();
   return nodemailer.createTransport({
-    host: creds.host,
+    host,
     port: creds.port,
     secure: creds.secure,
     // For STARTTLS providers like Zoho / Gmail / Office365 on port 587,
     // we explicitly require TLS upgrade; harmless when secure=true.
     requireTLS: !creds.secure,
     auth: {
-      user: creds.username,
-      pass: creds.password,
+      user,
+      pass,
     },
     connectionTimeout: 15000,
     greetingTimeout: 15000,
