@@ -1,6 +1,7 @@
 import {
   makeWASocket,
   useMultiFileAuthState,
+  fetchLatestBaileysVersion,
   DisconnectReason,
   type WASocket,
 } from "@whiskeysockets/baileys";
@@ -28,6 +29,8 @@ const AUTH_DIR = path.resolve(
   process.env["WHATSAPP_AUTH_DIR"] ?? "./.whatsapp_auth",
 );
 
+const MAX_RECONNECT_ATTEMPTS = 5;
+
 class WhatsappManager {
   private sock: WASocket | null = null;
   private status: WhatsappStatusValue = {
@@ -38,6 +41,7 @@ class WhatsappManager {
     connectedAt: null,
   };
   private starting = false;
+  private reconnectAttempts = 0;
 
   getStatus(): WhatsappStatusValue {
     return { ...this.status };
@@ -64,11 +68,29 @@ class WhatsappManager {
       await fs.mkdir(AUTH_DIR, { recursive: true });
       const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
 
+      // Fetch the latest WA Web protocol version so the server doesn't reject
+      // us with "Method Not Allowed" (code 405) for an outdated client version.
+      let waVersion: [number, number, number] | undefined;
+      try {
+        const fetched = await fetchLatestBaileysVersion();
+        waVersion = fetched.version;
+        logger.info(
+          { waVersion, isLatest: fetched.isLatest },
+          "Fetched WhatsApp Web version",
+        );
+      } catch (err) {
+        logger.warn(
+          { err },
+          "Could not fetch latest WA version, using Baileys default",
+        );
+      }
+
       const sock = makeWASocket({
         auth: state,
         printQRInTerminal: false,
-        browser: ["BulkMessenger", "Chrome", "1.0"],
+        browser: ["Chrome (Linux)", "Chrome", "120.0.0"],
         syncFullHistory: false,
+        ...(waVersion ? { version: waVersion } : {}),
       });
       this.sock = sock;
 
@@ -97,6 +119,7 @@ class WhatsappManager {
         if (connection === "open") {
           const me = sock.user?.id ?? null;
           const phoneNumber = me ? me.split(":")[0]?.split("@")[0] ?? null : null;
+          this.reconnectAttempts = 0;
           this.status = {
             state: "connected",
             qrDataUrl: null,
@@ -109,7 +132,7 @@ class WhatsappManager {
 
         if (connection === "close") {
           const errAny = lastDisconnect?.error as
-            | { output?: { statusCode?: number } }
+            | { output?: { statusCode?: number }; message?: string }
             | undefined;
           const code = errAny?.output?.statusCode;
           const loggedOut = code === DisconnectReason.loggedOut;
@@ -119,6 +142,7 @@ class WhatsappManager {
           );
 
           if (loggedOut) {
+            this.reconnectAttempts = 0;
             this.status = {
               state: "disconnected",
               qrDataUrl: null,
@@ -128,23 +152,45 @@ class WhatsappManager {
             };
             this.sock = null;
             void this.clearAuth();
-          } else {
-            // Auto-reconnect for transient drops
-            this.status = {
-              state: "connecting",
-              qrDataUrl: null,
-              phoneNumber: this.status.phoneNumber,
-              message: "Reconnecting...",
-              connectedAt: this.status.connectedAt,
-            };
-            this.sock = null;
-            setTimeout(() => {
-              this.starting = false;
-              void this.start().catch((err) =>
-                logger.error({ err }, "WhatsApp reconnect failed"),
-              );
-            }, 1500);
+            return;
           }
+
+          // Was the session previously connected? Then this is a transient drop.
+          // Otherwise we are looping during the initial handshake — give up after
+          // a few attempts so the user sees a real error instead of a tight loop.
+          this.sock = null;
+          this.reconnectAttempts += 1;
+
+          if (this.reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+            this.status = {
+              state: "error",
+              qrDataUrl: null,
+              phoneNumber: null,
+              message:
+                code === 405
+                  ? "WhatsApp rejected the connection (code 405). This usually means WhatsApp is blocking this server's IP — cloud/VPS hosts are commonly blocked. Try again later or run the app from a residential network."
+                  : `WhatsApp connection failed (code ${code ?? "unknown"}). ${errAny?.message ?? "Please try again."}`,
+              connectedAt: null,
+            };
+            void this.clearAuth();
+            return;
+          }
+
+          this.status = {
+            state: "connecting",
+            qrDataUrl: null,
+            phoneNumber: this.status.phoneNumber,
+            message: `Reconnecting (attempt ${this.reconnectAttempts} of ${MAX_RECONNECT_ATTEMPTS})...`,
+            connectedAt: this.status.connectedAt,
+          };
+          // Exponential backoff: 2s, 4s, 8s, 16s, 32s
+          const delay = Math.min(2000 * 2 ** (this.reconnectAttempts - 1), 32000);
+          setTimeout(() => {
+            this.starting = false;
+            void this.start().catch((err) =>
+              logger.error({ err }, "WhatsApp reconnect failed"),
+            );
+          }, delay);
         }
       });
     } catch (err) {
@@ -173,6 +219,7 @@ class WhatsappManager {
       logger.warn({ err }, "WhatsApp logout encountered an error");
     }
     this.sock = null;
+    this.reconnectAttempts = 0;
     await this.clearAuth();
     this.status = {
       state: "disconnected",
