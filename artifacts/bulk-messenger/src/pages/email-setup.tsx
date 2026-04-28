@@ -6,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Mail, CheckCircle2, XCircle, Loader2 } from "lucide-react";
+import { Mail, CheckCircle2, XCircle, Loader2, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
@@ -56,7 +56,15 @@ export function EmailSetup() {
   const handleTest = async () => {
     try {
       setTestResult(null);
-      const res = await testConfig.mutateAsync({});
+      // Send current form values so the user can test before saving. If the
+      // password is blank we fall back to the saved configuration on the server.
+      const body = formData.password ? formData : undefined;
+      const response = await fetch(`${import.meta.env.BASE_URL}api/email/test`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: body ? JSON.stringify(body) : "{}",
+      });
+      const res = (await response.json()) as { success: boolean; message?: string | null };
       setTestResult(res);
       if (res.success) {
         toast({ title: "Connection successful!" });
@@ -64,8 +72,17 @@ export function EmailSetup() {
         toast({ variant: "destructive", title: "Connection failed", description: res.message || "Check your credentials." });
       }
     } catch (error) {
-      toast({ variant: "destructive", title: "Failed to test connection" });
+      toast({ variant: "destructive", title: "Failed to test connection", description: error instanceof Error ? error.message : undefined });
     }
+  };
+
+  const applyZohoPreset = (region: "com" | "in" | "eu") => {
+    setFormData((f) => ({
+      ...f,
+      host: `smtp.zoho.${region}`,
+      port: 465,
+      secure: true,
+    }));
   };
 
   if (isLoading) return <div className="p-8"><Loader2 className="w-8 h-8 animate-spin mx-auto text-primary" /></div>;
@@ -93,13 +110,44 @@ export function EmailSetup() {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
+          <div className="flex flex-wrap items-center gap-2 pb-2">
+            <span className="text-sm text-muted-foreground mr-2">Quick presets:</span>
+            <Button type="button" size="sm" variant="outline" onClick={() => applyZohoPreset("com")}>
+              Zoho (.com)
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => applyZohoPreset("in")}>
+              Zoho (.in)
+            </Button>
+            <Button type="button" size="sm" variant="outline" onClick={() => applyZohoPreset("eu")}>
+              Zoho (.eu)
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => setFormData((f) => ({ ...f, host: "smtp.gmail.com", port: 465, secure: true }))}
+            >
+              Gmail
+            </Button>
+          </div>
+
+          <Alert>
+            <Info className="h-4 w-4" />
+            <AlertTitle>Using Zoho?</AlertTitle>
+            <AlertDescription className="text-sm">
+              Pick the preset that matches the region of your Zoho account, then enter your full Zoho address as the username and an
+              <strong> App Password</strong> as the password (if Two-Factor Authentication is on, generate one at zoho.com → My Account → Security → App Passwords).
+              The From Email must match the Zoho address you authenticate with.
+            </AlertDescription>
+          </Alert>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>SMTP Host</Label>
               <Input 
                 value={formData.host} 
                 onChange={e => setFormData({...formData, host: e.target.value})} 
-                placeholder="smtp.sendgrid.net" 
+                placeholder="smtp.zoho.com" 
               />
             </div>
             <div className="space-y-2">
@@ -123,11 +171,11 @@ export function EmailSetup() {
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label>Username</Label>
+              <Label>Username (full email)</Label>
               <Input 
                 value={formData.username} 
                 onChange={e => setFormData({...formData, username: e.target.value})} 
-                placeholder="apikey" 
+                placeholder="you@yourdomain.com" 
               />
             </div>
             <div className="space-y-2">

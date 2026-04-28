@@ -64,7 +64,29 @@ router.put("/email/config", async (req, res): Promise<void> => {
   });
 });
 
-router.post("/email/test", async (_req, res): Promise<void> => {
+router.post("/email/test", async (req, res): Promise<void> => {
+  // Accept the SMTP credentials in the body so the user can test before saving.
+  // Falls back to the saved configuration when no body is provided.
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const hasOverride =
+    typeof body["host"] === "string" &&
+    typeof body["port"] === "number" &&
+    typeof body["username"] === "string" &&
+    typeof body["password"] === "string" &&
+    body["password"].length > 0;
+
+  if (hasOverride) {
+    const result = await verifyEmailConnection({
+      host: body["host"] as string,
+      port: body["port"] as number,
+      secure: Boolean(body["secure"]),
+      username: body["username"] as string,
+      password: body["password"] as string,
+    });
+    res.json(result);
+    return;
+  }
+
   const result = await verifyEmailConnection();
   res.json(result);
 });
