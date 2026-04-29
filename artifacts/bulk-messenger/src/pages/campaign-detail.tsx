@@ -1,5 +1,5 @@
 import { useRoute } from "wouter";
-import { useGetCampaign, useListCampaignMessages } from "@workspace/api-client-react";
+import { useGetCampaign, useListCampaignMessages, getGetCampaignQueryKey, getListCampaignMessagesQueryKey } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Progress } from "@/components/ui/progress";
@@ -12,11 +12,17 @@ export function CampaignDetail() {
   const id = match ? parseInt(params!.id, 10) : 0;
 
   const { data: campaign } = useGetCampaign(id, {
-    query: { refetchInterval: (data) => (data?.status === 'running' || data?.status === 'queued') ? 2000 : false }
+    query: { 
+      queryKey: getGetCampaignQueryKey(id),
+      refetchInterval: (query) => (query.state.data?.status === 'running' || query.state.data?.status === 'queued') ? 2000 : false 
+    }
   });
 
   const { data: messages } = useListCampaignMessages(id, {
-    query: { refetchInterval: () => (campaign?.status === 'running' || campaign?.status === 'queued') ? 2000 : false }
+    query: { 
+      queryKey: getListCampaignMessagesQueryKey(id),
+      refetchInterval: (query) => (campaign?.status === 'running' || campaign?.status === 'queued') ? 2000 : false 
+    }
   });
 
   if (!campaign) return null;

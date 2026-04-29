@@ -76,7 +76,7 @@ export function Contacts() {
   const handleDeleteAll = async () => {
     if (!confirm("Are you sure you want to delete all contacts? This cannot be undone.")) return;
     try {
-      await deleteAllContacts.mutateAsync({});
+      await deleteAllContacts.mutateAsync();
       queryClient.invalidateQueries({ queryKey: getListContactsQueryKey() });
       toast({ title: "All contacts deleted" });
     } catch (error) {
