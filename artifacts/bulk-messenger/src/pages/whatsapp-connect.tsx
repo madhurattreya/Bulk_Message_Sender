@@ -11,7 +11,10 @@ export function WhatsappConnect() {
   const { toast } = useToast();
   
   const { data: status, isLoading } = useGetWhatsappStatus({
-    query: { refetchInterval: 2000 } // Poll every 2s
+    query: { 
+      queryKey: getGetWhatsappStatusQueryKey(),
+      refetchInterval: 2000 
+    } // Poll every 2s
   });
   
   const connectWhatsapp = useConnectWhatsapp();
@@ -19,7 +22,7 @@ export function WhatsappConnect() {
 
   const handleStartSession = async () => {
     try {
-      await connectWhatsapp.mutateAsync({});
+      await connectWhatsapp.mutateAsync();
       toast({ title: "Starting session..." });
     } catch (error) {
       toast({ variant: "destructive", title: "Failed to start WhatsApp session" });
@@ -28,7 +31,7 @@ export function WhatsappConnect() {
 
   const handleLogout = async () => {
     try {
-      await logoutWhatsapp.mutateAsync({});
+      await logoutWhatsapp.mutateAsync();
       toast({ title: "Logged out from WhatsApp" });
     } catch (error) {
       toast({ variant: "destructive", title: "Failed to log out" });
